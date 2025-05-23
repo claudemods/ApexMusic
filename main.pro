@@ -1,5 +1,5 @@
 # Project name
-TARGET = AppLaunchr
+TARGET = ApexMusic
 
 # Required Qt modules
 QT += core gui widgets multimedia
