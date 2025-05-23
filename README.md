@@ -35,7 +35,8 @@ Open Source Qt Plasma 6 Widget For Playing Music
 
 new release heres a photo 
 
-![Screenshot_20250523_212859](https://github.com/user-attachments/assets/b4f0e501-f872-4924-ac59-4d467cb99429)
+![Screenshot_20250523_220712](https://github.com/user-attachments/assets/4a4d455c-a34b-46cd-8ce4-432b50d6c8b4)
+
 
 
 
