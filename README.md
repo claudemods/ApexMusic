@@ -31,6 +31,10 @@ Open Source Qt Plasma 6 Widget For Playing Music
 <a href="https://cachyos.org/" target="_blank"><img src="https://img.shields.io/badge/DISTRO-CachyOS-00FFFF?style=for-the-badge&logo=CachyOS" /></a>
 
 
+[![Version](https://img.shields.io/github/v/release/claudemods/ApexMusic?color=FFD700&label=Latest%20Release&style=for-the-badge)](https://github.com/claudemods/ApexMusic/releases/tag/v1.0)
+
+
+
 
 ![Screenshot_20250523_172340](https://github.com/user-attachments/assets/9c63cb5a-1ce4-4b30-84c0-17f87e9a3118)
 
