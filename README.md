@@ -1,11 +1,16 @@
+
+<p align="center">
+  <img src="https://i.postimg.cc/JhMRf2RZ/claudemods-03-17-2025.gif">
+</p>
+
+
+
 <div align="center">
  ApexMusic
 <div align="center">
 Open Source Qt Plasma 6 Widget For Playing Music
 
-<p align="center">
-  <img src="https://i.postimg.cc/JhMRf2RZ/claudemods-03-17-2025.gif">
-</p>
+
 
 <h1 align="center">(ApexMusic)</h1>
 
