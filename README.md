@@ -5,14 +5,18 @@
 
 
 
-<div align="center">
- ApexMusic
+
+
+<h1 align="center">(ApexMusic)</h1>
+
+
+
+
 <div align="center">
 Open Source Qt Plasma 6 Widget For Playing Music
 
 
 
-<h1 align="center">(ApexMusic)</h1>
 
 <strong>simple c++ qt6 plasma widget for playing music<strong>
 
