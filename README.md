@@ -1,4 +1,5 @@
 # ApexMusic
+<div align="center">
 Open Source Qt Plasma 6 Widget For Playing Music
 
 <p align="center">
