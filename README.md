@@ -33,9 +33,11 @@ Open Source Qt Plasma 6 Widget For Playing Music
 
 [![Version](https://img.shields.io/github/v/release/claudemods/ApexMusic?color=FFD700&label=Latest%20Release&style=for-the-badge)](https://github.com/claudemods/ApexMusic/releases/tag/v1.0)
 
-new release coming heres a photo 
+new release heres a photo 
 
-![Screenshot_20250523_193555](https://github.com/user-attachments/assets/f8be6383-3d08-4763-a755-54cdb79807c6)
+![Screenshot_20250523_194707](https://github.com/user-attachments/assets/d83d5458-93e8-4340-8afd-30732fef53b2)
+
+
 
 
 
