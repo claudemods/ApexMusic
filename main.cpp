@@ -11,37 +11,41 @@
 #include <QMessageBox>
 #include <QMouseEvent>
 #include <QDir>
-#include <QProgressBar>
 #include <QLabel>
 #include <QTimer>
 #include <QPainter>
-#include <QLinearGradient>
 #include <QFile>
 #include <QTextStream>
 #include <QInputDialog>
 #include <QCloseEvent>
 #include <QToolTip>
 #include <QFileInfo>
-#include <QProcess>
 
 class MediaControlWidget : public QWidget {
     Q_OBJECT
 public:
     MediaControlWidget(QWidget *parent = nullptr)
-    : QWidget(parent), mediaLoaded(false), isPlaying(false), currentMediaPath("") {
+    : QWidget(parent), mediaLoaded(false), isPlaying(false), currentMediaPath(""),
+    hoverOverProgress(false), draggingProgress(false), wasPlayingBeforeDrag(false) {
         setupUI();
         setupPlayer();
+
         // Create musiclist.txt if it doesn't exist
         QFile file("musiclist.txt");
         if (!file.exists()) {
             file.open(QIODevice::WriteOnly);
             file.close();
         }
+
         updateTimer = new QTimer(this);
         connect(updateTimer, &QTimer::timeout, this, &MediaControlWidget::updateProgress);
         updateTimer->start(100);
+
+        setMouseTracking(true);
     }
+
     ~MediaControlWidget() { resetPlayer(); }
+
     void showControlPanel() {
         QPoint pos = QCursor::pos();
         move(pos.x() - width() / 2, pos.y() - height());
@@ -49,11 +53,105 @@ public:
         raise();
         activateWindow();
     }
+
 protected:
     void closeEvent(QCloseEvent *event) override {
         resetPlayer();
         event->accept();
     }
+
+    void paintEvent(QPaintEvent *event) override {
+        Q_UNUSED(event);
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing);
+
+        // Draw background
+        painter.fillRect(rect(), QColor(34, 34, 34, 220));
+
+        // Draw progress bar background
+        int progressBarHeight = 2;
+        progressBarRect = QRect(10, height() - progressBarHeight - 5, width() - 20, progressBarHeight);
+        painter.fillRect(progressBarRect, QColor(60, 60, 60));
+
+        // Draw progress bar if media is loaded
+        if (mediaLoaded && player->duration() > 0) {
+            double progress = static_cast<double>(player->position()) / player->duration();
+            progress = qBound(0.0, progress, 1.0);
+            int progressWidth = static_cast<int>(progress * progressBarRect.width());
+            QRect progressRect(progressBarRect.x(), progressBarRect.y(), progressWidth, progressBarRect.height());
+
+            // Solid #24ffff color for progress
+            painter.fillRect(progressRect, QColor(36, 255, 255));
+
+            // Draw slider handle (always visible during drag, otherwise only on hover)
+            if (draggingProgress || hoverOverProgress) {
+                int handleSize = 8;
+                int handleY = progressBarRect.y() - (handleSize - progressBarHeight) / 2;
+                painter.setPen(Qt::NoPen);
+                painter.setBrush(QColor(36, 255, 255));
+                painter.drawEllipse(progressRect.right() - handleSize/2, handleY, handleSize, handleSize);
+            }
+        }
+    }
+
+    void mouseMoveEvent(QMouseEvent *event) override {
+        // Check if mouse is over progress bar area
+        QRect hoverRect(10, height() - 15, width() - 20, 15);
+        bool wasHovering = hoverOverProgress;
+        hoverOverProgress = hoverRect.contains(event->pos());
+
+        if (hoverOverProgress != wasHovering) {
+            setCursor(hoverOverProgress ? Qt::PointingHandCursor : Qt::ArrowCursor);
+            update();
+        }
+
+        if (draggingProgress && mediaLoaded) {
+            // Calculate new position based on mouse X
+            int mouseX = event->pos().x() - progressBarRect.x();
+            mouseX = qBound(0, mouseX, progressBarRect.width());
+            double percentage = static_cast<double>(mouseX) / progressBarRect.width();
+            qint64 newPosition = static_cast<qint64>(percentage * player->duration());
+            player->setPosition(newPosition);
+            update();
+        }
+
+        QWidget::mouseMoveEvent(event);
+    }
+
+    void mousePressEvent(QMouseEvent *event) override {
+        if (event->button() == Qt::LeftButton && hoverOverProgress && mediaLoaded) {
+            draggingProgress = true;
+            wasPlayingBeforeDrag = isPlaying;
+
+            // Pause playback during dragging
+            if (isPlaying) {
+                player->pause();
+                isPlaying = false;
+                playButton->setIcon(QIcon(":/images/play.png"));
+            }
+
+            // Calculate clicked position in media
+            int mouseX = event->pos().x() - progressBarRect.x();
+            mouseX = qBound(0, mouseX, progressBarRect.width());
+            double percentage = static_cast<double>(mouseX) / progressBarRect.width();
+            qint64 newPosition = static_cast<qint64>(percentage * player->duration());
+            player->setPosition(newPosition);
+            update();
+        }
+        QWidget::mousePressEvent(event);
+    }
+
+    void mouseReleaseEvent(QMouseEvent *event) override {
+        if (event->button() == Qt::LeftButton && draggingProgress) {
+            draggingProgress = false;
+
+            // Don't resume playback automatically
+            // Keep the player paused until user clicks play
+            update();
+        }
+        QWidget::mouseReleaseEvent(event);
+    }
+
     bool event(QEvent *event) override {
         if (event->type() == QEvent::ToolTip) {
             QHelpEvent *helpEvent = static_cast<QHelpEvent *>(event);
@@ -61,12 +159,13 @@ protected:
             QWidget *widget = childAt(pos);
             if (widget && widget->inherits("QPushButton")) {
                 QPushButton *button = qobject_cast<QPushButton *>(widget);
-                QToolTip::showText(helpEvent->globalPos(), button->toolTip());
+                QToolTip::showText(helpEvent->globalPos(), button->toolTip(), this, QRect(), 3000);
                 return true;
             }
         }
         return QWidget::event(event);
     }
+
 private slots:
     void openMediaFile() {
         QString fileName = QFileDialog::getOpenFileName(
@@ -77,11 +176,13 @@ private slots:
             loadMediaFile(fileName);
         }
     }
+
     void togglePlayPause() {
         if (!mediaLoaded) {
             openMediaFile();
             return;
         }
+
         if (isPlaying) {
             player->pause();
             playButton->setIcon(QIcon(":/images/play.png"));
@@ -102,7 +203,9 @@ private slots:
             soundPlayer->play();
         }
         isPlaying = !isPlaying;
+        update();
     }
+
     void skipForward() {
         if (mediaLoaded) {
             player->setPosition(player->position() + 10000);
@@ -112,24 +215,16 @@ private slots:
             soundPlayer->setAudioOutput(audio);
             soundPlayer->setSource(QUrl("qrc:/sounds/click.mp3"));
             soundPlayer->play();
+            update();
         }
     }
-    void skipForwardDouble() {
-        if (mediaLoaded) {
-            player->setPosition(player->position() + 30000);
-            // Play "click" sound
-            QMediaPlayer *soundPlayer = new QMediaPlayer(this);
-            QAudioOutput *audio = new QAudioOutput(this);
-            soundPlayer->setAudioOutput(audio);
-            soundPlayer->setSource(QUrl("qrc:/sounds/click.mp3"));
-            soundPlayer->play();
-        }
-    }
+
     void saveCurrentSong() {
         if (!mediaLoaded || currentMediaPath.isEmpty()) {
             QMessageBox::information(this, "Info", "No media loaded to save");
             return;
         }
+
         QFile file("musiclist.txt");
         if (file.open(QIODevice::Append | QIODevice::Text)) {
             QTextStream stream(&file);
@@ -146,6 +241,7 @@ private slots:
             QMessageBox::warning(this, "Error", "Could not save to playlist file");
         }
     }
+
     void loadPlaylist() {
         // Play "select" sound
         QMediaPlayer *soundPlayer = new QMediaPlayer(this);
@@ -153,11 +249,13 @@ private slots:
         soundPlayer->setAudioOutput(audio);
         soundPlayer->setSource(QUrl("qrc:/sounds/select.mp3"));
         soundPlayer->play();
+
         QFile file("musiclist.txt");
         if (!file.exists() || !file.open(QIODevice::ReadOnly | QIODevice::Text)) {
             QMessageBox::warning(this, "Error", "Could not open playlist file");
             return;
         }
+
         QStringList paths;
         QTextStream in(&file);
         while (!in.atEnd()) {
@@ -167,22 +265,26 @@ private slots:
             }
         }
         file.close();
+
         if (paths.isEmpty()) {
             QMessageBox::information(this, "Info", "Playlist is empty or contains invalid paths");
             return;
         }
+
         bool ok;
         QString item = QInputDialog::getItem(this, "Load Playlist", "Select a song:", paths, 0, false, &ok);
         if (ok && !item.isEmpty()) {
             loadMediaFile(item);
         }
     }
+
     void handleMediaStatusChanged(QMediaPlayer::MediaStatus status) {
         if (status == QMediaPlayer::EndOfMedia) {
             playButton->setIcon(QIcon(":/images/play.png"));
             isPlaying = false;
             player->setPosition(0);
             updateTimeDisplay();
+            update();
         } else if (status == QMediaPlayer::LoadedMedia) {
             mediaLoaded = true;
             isPlaying = true;
@@ -190,18 +292,23 @@ private slots:
             player->play();
             updateTimeDisplay();
             updateFileNameDisplay();
+            update();
         }
     }
+
     void handleError(QMediaPlayer::Error error, const QString &errorString) {
         Q_UNUSED(error);
         QMessageBox::warning(this, tr("Error"), errorString);
         resetPlayer();
     }
+
     void updateProgress() {
-        if (mediaLoaded && isPlaying) {
+        if (mediaLoaded && isPlaying && !draggingProgress) {
             updateTimeDisplay();
+            update();
         }
     }
+
     void updateTimeDisplay() {
         if (!mediaLoaded) return;
         qint64 position = player->position();
@@ -209,11 +316,8 @@ private slots:
         QString positionTime = formatTime(position);
         QString durationTime = formatTime(duration);
         timeLabel->setText(QString("%1 / %2").arg(positionTime, durationTime));
-        if (duration > 0) {
-            progressBar->setMaximum(1000);
-            progressBar->setValue(static_cast<int>((position * 1000) / duration));
-        }
     }
+
     void updateFileNameDisplay() {
         if (!mediaLoaded || currentMediaPath.isEmpty()) {
             fileNameLabel->setText("No file loaded");
@@ -224,6 +328,7 @@ private slots:
         fileNameLabel->setText(fileName);
         fileNameLabel->setToolTip(currentMediaPath);
     }
+
     QString formatTime(qint64 milliseconds) {
         int seconds = (milliseconds / 1000) % 60;
         int minutes = (milliseconds / (1000 * 60)) % 60;
@@ -231,20 +336,16 @@ private slots:
         .arg(minutes, 2, 10, QLatin1Char('0'))
         .arg(seconds, 2, 10, QLatin1Char('0'));
     }
-    bool eventFilter(QObject *obj, QEvent *event) override {
-        if (obj == skipButton && event->type() == QEvent::MouseButtonDblClick) {
-            skipForwardDouble();
-            return true;
-        }
-        return QWidget::eventFilter(obj, event);
-    }
+
 private:
     void loadMediaFile(const QString &fileName) {
         resetPlayer();
         player->setSource(QUrl::fromLocalFile(fileName));
         currentMediaPath = fileName;
         updateFileNameDisplay();
+        update();
     }
+
     void resetPlayer() {
         if (player) {
             player->stop();
@@ -256,22 +357,43 @@ private:
         playButton->setIcon(QIcon(":/images/play.png"));
         timeLabel->setText("0:00 / 0:00");
         fileNameLabel->setText("No file loaded");
-        progressBar->setValue(0);
+        update();
     }
+
     void setupUI() {
         setWindowFlags(Qt::Tool | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint);
         setAttribute(Qt::WA_TranslucentBackground);
-        setStyleSheet("QWidget { background-color: #222; border-radius: 8px; padding: 5px; }"
-        "QPushButton { background: transparent; border: none; padding: 5px; }"
-        "QPushButton:hover { background: #444; border-radius: 4px; }"
-        "QToolTip { color: #ffffff; background-color: #333; border: 1px solid #555; }");
+        setStyleSheet(R"(
+            QWidget {
+                background-color: #222;
+                border-radius: 8px;
+                padding: 5px;
+            }
+            QPushButton {
+                background: transparent;
+                border: none;
+                padding: 5px;
+            }
+            QPushButton:hover {
+                background: #444;
+                border-radius: 4px;
+            }
+            QToolTip {
+                color: #24ffff;
+                background-color: #333;
+                border: 1px solid #555;
+                padding: 2px;
+            }
+        )");
+
         QVBoxLayout *mainLayout = new QVBoxLayout(this);
         mainLayout->setSpacing(5);
+        mainLayout->setContentsMargins(10, 10, 10, 15);
 
         // Add ApexMusic v1.01 label
         QLabel *apexMusicLabel = new QLabel("ApexMusic v1.01", this);
         apexMusicLabel->setAlignment(Qt::AlignCenter);
-        apexMusicLabel->setStyleSheet("QLabel { color: #00ffff; font-size: 12px; font-weight: bold; }");
+        apexMusicLabel->setStyleSheet("QLabel { color: #24ffff; font-size: 12px; font-weight: bold; }");
         mainLayout->addWidget(apexMusicLabel);
 
         // File name label
@@ -282,26 +404,10 @@ private:
         fileNameLabel->setWordWrap(true);
         mainLayout->addWidget(fileNameLabel);
 
-        progressBar = new QProgressBar(this);
-        progressBar->setTextVisible(false);
-        progressBar->setStyleSheet(
-            "QProgressBar {"
-            "  border: 1px solid #444;"
-            "  border-radius: 4px;"
-            "  background: #333;"
-            "  height: 6px;"
-            "}"
-            "QProgressBar::chunk {"
-            "  background: qlineargradient(x1:0, y1:0, x2:1, y2:0,"
-            "    stop:0 #00ffff, stop:1 #00aaff);"
-            "  border-radius: 4px;"
-            "}");
-        progressBar->setToolTip("Playback progress");
-        mainLayout->addWidget(progressBar);
-
+        // Custom timing label
         timeLabel = new QLabel("0:00 / 0:00", this);
         timeLabel->setAlignment(Qt::AlignCenter);
-        timeLabel->setStyleSheet("QLabel { color: #00ffff; font-size: 10px; }");
+        timeLabel->setStyleSheet("QLabel { color: #24ffff; font-size: 10px; }");
         timeLabel->setToolTip("Current time / Total time");
         mainLayout->addWidget(timeLabel);
 
@@ -315,12 +421,12 @@ private:
         connect(backButton, &QPushButton::clicked, this, [this]() {
             if (mediaLoaded) {
                 player->setPosition(player->position() - 5000);
-                // Play "click" sound
                 QMediaPlayer *soundPlayer = new QMediaPlayer(this);
                 QAudioOutput *audio = new QAudioOutput(this);
                 soundPlayer->setAudioOutput(audio);
                 soundPlayer->setSource(QUrl("qrc:/sounds/click.mp3"));
                 soundPlayer->play();
+                update();
             }
         });
         buttonLayout->addWidget(backButton);
@@ -332,12 +438,21 @@ private:
         connect(playButton, &QPushButton::clicked, this, &MediaControlWidget::togglePlayPause);
         buttonLayout->addWidget(playButton);
 
-        skipButton = new QPushButton(this);
+        QPushButton *skipButton = new QPushButton(this);
         skipButton->setIcon(QIcon(":/images/skip.png"));
         skipButton->setIconSize(QSize(24, 24));
         skipButton->setToolTip("Skip 10 seconds\nDouble-click for 30 seconds");
-        connect(skipButton, &QPushButton::clicked, this, &MediaControlWidget::skipForward);
-        skipButton->installEventFilter(this);
+        connect(skipButton, &QPushButton::clicked, this, [this]() {
+            if (mediaLoaded) {
+                player->setPosition(player->position() + 10000);
+                QMediaPlayer *soundPlayer = new QMediaPlayer(this);
+                QAudioOutput *audio = new QAudioOutput(this);
+                soundPlayer->setAudioOutput(audio);
+                soundPlayer->setSource(QUrl("qrc:/sounds/click.mp3"));
+                soundPlayer->play();
+                update();
+            }
+        });
         buttonLayout->addWidget(skipButton);
 
         QPushButton *saveCurrentButton = new QPushButton(this);
@@ -358,6 +473,7 @@ private:
         setLayout(mainLayout);
         adjustSize();
     }
+
     void setupPlayer() {
         player = new QMediaPlayer(this);
         audioOutput = new QAudioOutput(this);
@@ -366,17 +482,20 @@ private:
         connect(player, &QMediaPlayer::errorOccurred, this, &MediaControlWidget::handleError);
         connect(player, &QMediaPlayer::positionChanged, this, &MediaControlWidget::updateTimeDisplay);
     }
+
     QMediaPlayer *player;
     QAudioOutput *audioOutput;
     QPushButton *playButton;
-    QPushButton *skipButton;
-    QProgressBar *progressBar;
     QLabel *timeLabel;
     QLabel *fileNameLabel;
     QTimer *updateTimer;
     bool mediaLoaded;
     bool isPlaying;
     QString currentMediaPath;
+    bool hoverOverProgress;
+    bool draggingProgress;
+    bool wasPlayingBeforeDrag;
+    QRect progressBarRect;
 };
 
 class TrayIcon : public QSystemTrayIcon {
@@ -392,12 +511,14 @@ public:
         setContextMenu(menu);
         connect(this, &QSystemTrayIcon::activated, this, &TrayIcon::onTrayIconActivated);
     }
+
 private slots:
     void onTrayIconActivated(QSystemTrayIcon::ActivationReason reason) {
         if (reason == QSystemTrayIcon::Trigger) {
             mediaWidget->showControlPanel();
         }
     }
+
 private:
     MediaControlWidget *mediaWidget;
 };
@@ -407,12 +528,15 @@ int main(int argc, char *argv[]) {
     app.setApplicationName("Media Control Widget");
     app.setOrganizationName("Plasma Widget");
     app.setQuitOnLastWindowClosed(false);
+
     if (!QSystemTrayIcon::isSystemTrayAvailable()) {
         QMessageBox::critical(nullptr, "Error", "System tray not available");
         return 1;
     }
+
     TrayIcon trayIcon;
     trayIcon.show();
     return app.exec();
 }
+
 #include "main.moc"
