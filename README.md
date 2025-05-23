@@ -18,7 +18,7 @@ Open Source Qt Plasma 6 Widget For Playing Music
 
 
 
-<strong>simple c++ qt6 plasma widget for playing music<strong>
+<strong>c++ qt6 <strong>
 
 
 <div align="center">
