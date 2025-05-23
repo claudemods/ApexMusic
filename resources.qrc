@@ -1,0 +1,9 @@
+<!DOCTYPE RCC><RCC version="1.0">
+    <qresource prefix="/images">
+        <file alias="icon.png">images/icon.png</file>
+        <file alias="back.png">images/back.png</file>
+        <file alias="play.png">images/play.png</file>
+        <file alias="pause.png">images/pause.png</file>
+        <file alias="skip.png">images/skip.png</file>
+    </qresource>
+</RCC>
