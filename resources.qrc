@@ -7,6 +7,7 @@
         <file alias="skip.png">images/skip.png</file>
         <file alias="save.png">images/save.png</file>
         <file alias="savelist.png">images/savelist.png</file>
+        <file alias="close.png">images/close.png</file>
     <file>sounds/play.mp3</file>
     <file>sounds/pause.mp3</file>
     <file>sounds/save.mp3</file>
