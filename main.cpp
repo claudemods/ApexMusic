@@ -26,7 +26,7 @@
 #include <QScreen>
 #include <cmath>
 #include <QPropertyAnimation>
-#include <QSequentialAnimationGroup>  // Added missing include
+#include <QSequentialAnimationGroup>
 
 class MediaControlWidget : public QWidget {
     Q_OBJECT
@@ -34,7 +34,7 @@ public:
     MediaControlWidget(QWidget *parent = nullptr)
     : QWidget(parent), mediaLoaded(false), isPlaying(false), currentMediaPath(""),
     hoverOverProgress(false), draggingProgress(false), wasPlayingBeforeDrag(false),
-    beatPhase(0), lastBeatTime(0), beatIntensity(0) {
+    beatPhase(0), lastBeatTime(0), beatIntensity(0), shuffleMode(false) {
         setupUI();
         setupPlayer();
         // Initialize audio levels for visualization
@@ -281,11 +281,27 @@ private slots:
     }
 
     void togglePlayPause() {
+        QPushButton* senderButton = qobject_cast<QPushButton*>(sender());
+        animateButton(senderButton);
+
+        // If media is already playing, double-click opens file chooser
+        static qint64 lastClickTime = 0;
+        qint64 currentTime = QDateTime::currentMSecsSinceEpoch();
+
+        if (isPlaying && (currentTime - lastClickTime < 500)) { // 500ms double-click window
+            // Double-click detected while playing, open file chooser
+            openMediaFile();
+            lastClickTime = 0;
+            return;
+        }
+
+        lastClickTime = currentTime;
+
         if (!mediaLoaded) {
             openMediaFile();
             return;
         }
-        animateButton(qobject_cast<QPushButton*>(sender()));
+
         if (isPlaying) {
             player->pause();
             playButton->setIcon(QIcon(":/images/play.png"));
@@ -349,13 +365,73 @@ private slots:
         }
     }
 
+    void toggleShuffle() {
+        animateButton(qobject_cast<QPushButton*>(sender()));
+        shuffleMode = !shuffleMode;
+
+        if (shuffleMode) {
+            shuffleButton->setIcon(QIcon(":/images/shuffle_on.png"));
+            shuffleButton->setToolTip("Shuffle: ON");
+            QMessageBox::information(this, "Shuffle", "Shuffle mode activated");
+        } else {
+            shuffleButton->setIcon(QIcon(":/images/shuffle.png"));
+            shuffleButton->setToolTip("Shuffle: OFF");
+            QMessageBox::information(this, "Shuffle", "Shuffle mode deactivated");
+        }
+    }
+
+    void playRandomSong() {
+        if (!shuffleMode) {
+            QMessageBox::information(this, "Shuffle", "Please enable shuffle mode first");
+            return;
+        }
+
+        QFile file("musiclist.txt");
+        if (!file.exists() || !file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            QMessageBox::warning(this, "Error", "Could not open playlist file");
+            return;
+        }
+
+        QStringList validPaths;
+        QTextStream in(&file);
+        while (!in.atEnd()) {
+            QString line = in.readLine().trimmed();
+            if (!line.isEmpty() && QFile::exists(line)) {
+                validPaths << line;
+            }
+        }
+        file.close();
+
+        if (validPaths.isEmpty()) {
+            QMessageBox::information(this, "Info", "Playlist is empty or contains invalid paths");
+            return;
+        }
+
+        // Get random song from playlist
+        int randomIndex = QRandomGenerator::global()->bounded(validPaths.size());
+        QString randomSong = validPaths[randomIndex];
+
+        // Don't play the same song if it's already playing
+        if (validPaths.size() > 1 && currentMediaPath == randomSong) {
+            randomIndex = (randomIndex + 1) % validPaths.size(); // Just pick next one
+            randomSong = validPaths[randomIndex];
+        }
+
+        loadMediaFile(randomSong);
+    }
+
     void handleMediaStatusChanged(QMediaPlayer::MediaStatus status) {
         if (status == QMediaPlayer::EndOfMedia) {
-            playButton->setIcon(QIcon(":/images/play.png"));
-            isPlaying = false;
-            player->setPosition(0);
-            updateTimeDisplay();
-            update();
+            // Auto-play next random song when shuffle is enabled
+            if (shuffleMode) {
+                playRandomSong();
+            } else {
+                playButton->setIcon(QIcon(":/images/play.png"));
+                isPlaying = false;
+                player->setPosition(0);
+                updateTimeDisplay();
+                update();
+            }
         } else if (status == QMediaPlayer::LoadedMedia) {
             mediaLoaded = true;
             isPlaying = true;
@@ -519,7 +595,7 @@ private:
         // Top bar
         QHBoxLayout *topBarLayout = new QHBoxLayout();
         topBarLayout->addStretch();
-        QLabel *apexMusicLabel = new QLabel("ApexMusic v1.03", this);
+        QLabel *apexMusicLabel = new QLabel("ApexMusic v1.03.1", this);
         apexMusicLabel->setAlignment(Qt::AlignCenter);
         apexMusicLabel->setStyleSheet("QLabel { color: #24ffff; font-size: 12px; font-weight: bold; }");
         topBarLayout->addWidget(apexMusicLabel);
@@ -571,7 +647,7 @@ private:
         playButton = new QPushButton(this);
         playButton->setIcon(QIcon(":/images/play.png"));
         playButton->setIconSize(QSize(24, 24));
-        playButton->setToolTip("Play/Pause");
+        playButton->setToolTip("Play/Pause\nDouble-click when playing to open file chooser");
         connect(playButton, &QPushButton::clicked, this, &MediaControlWidget::togglePlayPause);
         buttonLayout->addWidget(playButton);
 
@@ -596,6 +672,14 @@ private:
         connect(loadPlaylistButton, &QPushButton::clicked, this, &MediaControlWidget::loadPlaylist);
         buttonLayout->addWidget(loadPlaylistButton);
 
+        // NEW: Shuffle button as the 5th button on the right
+        shuffleButton = new QPushButton(this);
+        shuffleButton->setIcon(QIcon(":/images/shuffle.png"));
+        shuffleButton->setIconSize(QSize(24, 24));
+        shuffleButton->setToolTip("Shuffle: OFF\nClick to enable random playback from playlist");
+        connect(shuffleButton, &QPushButton::clicked, this, &MediaControlWidget::toggleShuffle);
+        buttonLayout->addWidget(shuffleButton);
+
         mainLayout->addLayout(buttonLayout);
         setLayout(mainLayout);
         adjustSize();
@@ -613,6 +697,7 @@ private:
     QMediaPlayer *player;
     QAudioOutput *audioOutput;
     QPushButton *playButton;
+    QPushButton *shuffleButton;  // NEW: Shuffle button pointer
     QLabel *timeLabel;
     QLabel *fileNameLabel;
     QTimer *updateTimer;
@@ -632,6 +717,7 @@ private:
     float beatPhase;
     qint64 lastBeatTime;
     float beatIntensity;
+    bool shuffleMode;  // NEW: Shuffle mode state
 };
 
 class TrayIcon : public QSystemTrayIcon {
