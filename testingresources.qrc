@@ -1,0 +1,19 @@
+<RCC>
+    <qresource prefix="/images">
+        <file alias="icon.png">images/icon.png</file>
+        <file alias="back.png">images/back.png</file>
+        <file alias="play.png">images/play.png</file>
+        <file alias="pause.png">images/pause.png</file>
+        <file alias="skip.png">images/skip.png</file>
+        <file alias="save.png">images/save.png</file>
+        <file alias="savelist.png">images/savelist.png</file>
+        <file alias="close.png">images/close.png</file>
+        <file alias="shuffle.png">images/shuffle.png</file>
+        <file alias="shuffle_on.png">images/shuffle_on.png</file>
+    <file>sounds/play.mp3</file>
+    <file>sounds/pause.mp3</file>
+    <file>sounds/save.mp3</file>
+    <file>sounds/select.mp3</file>
+    <file>sounds/click.mp3</file>
+    </qresource>
+</RCC>
